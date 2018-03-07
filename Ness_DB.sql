@@ -477,7 +477,8 @@ Begin
 		,Ness.dbo.TiVo_Data.[Contractor Number]
 		,(Case When Max(Ness_Employee_Contract.Rate) Is Null Then 0 Else Max(Ness_Employee_Contract.Rate) End / @HoursInMonth) As [Hourly Rate]
 		,dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth) - 
-			Case When Sum(TiVo_Data.[Worked Hours]) Is Null Then 0 Else Sum(TiVo_Data.[Worked_Hours]) End As [Hours Missing]
+		-- Sum(TiVo_Data.[Worked Hours]) As [Hours Missing]
+		(Case When Sum(TiVo_Data.[Worked Hours]) Is Null Then 0 Else Sum(TiVo_Data.[Worked Hours]) End) As [Hours Missing]
 		--,@HoursInMonth - Sum(TiVo_Data.[Worked Hours]) As [Hours Missing]
 		,Sum(TiVo_Data.[Worked Hours]) As [Hours Worked]
 		,Case When Max(Ness_Employee_Contract.Rate) Is Null Then 0 Else (Max(Ness_Employee_Contract.Rate) * (dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth) - Sum(TiVo_Data.[Worked Hours]))) / @HoursInMonth End As LineAmount

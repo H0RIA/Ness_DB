@@ -1,5 +1,11 @@
 Use Ness
 
+If Exists (Select * From sys.tables Where name = 'TiVo_Data')
+Begin
+	Drop Table TiVo_Data
+	Print 'Dropped table TiVo_Data!'
+End
+
 If Exists (Select * From sys.tables Where name = 'Ness_Contract_Salaries')
 Begin
 	Drop Table Ness_Contract_Salaries
@@ -210,9 +216,9 @@ Delete From Ness_Employee_Contract
 
 Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate)
 Select 
-	Ness_Employees.Id
 	--,Ness_Employees.FirstName
 	--,Ness_Employees.LastName
+	Ness_Employees.Id
 	,GetDate() As StartDate
 	,Null As EndDate
 	,F14 As Rate
@@ -369,6 +375,132 @@ End
 
 Go
 
+If Object_Id(N'dbo.ufnGetEmployeeComments', N'FN') Is Not Null
+    Drop Function dbo.ufnGetEmployeeComments;
+Go
+
+Create Function dbo.ufnGetEmployeeComments(@paramEmployeeId int, @InvoiceMonth int, @HoursInMonth Int, @BillableHours int)
+Returns varchar(255)
+As
+Begin
+	Declare @ResultData varchar(255)
+	Declare @VacationDays int
+	Declare @JoinedOn int	-- what day of month (if zero => no additional comment)
+	Declare @LeavingOn int	-- what day of month (if 100 => no additional comment)
+	Declare @BeginingOfMonth datetime
+	Declare @EndOfMonth datetime
+	Declare @HolidayHours int
+	Declare @AddComma bit
+
+	Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(Year(GetDate()) as varchar(4)) + '-01-01' )
+	Set @EndOfMonth = EOMonth(@BeginingOfMonth)
+	Set @ResultData = ''
+	Set @VacationDays = 0
+	Set @JoinedOn = 0
+	Set @LeavingOn = 100
+	Set @HolidayHours = @HoursInMonth - @BillableHours
+	Set @AddComma = 0
+
+	Select
+		@VacationDays = (LoggedHours - @HolidayHours) / 8
+	From 
+		(Select 
+			Ness_Employees.Id As EmployeeId
+			,Sum(TiVo_Data.[Worked Hours]) As LoggedHours
+			,TiVo_Data.[Project Number] As Project
+			,TiVo_Data.[Task Number] As Task
+		From 
+			Ness_Employees
+				Left Join Ness_Employee_Contract on Ness_Employee_Contract.EmployeeId = Ness_Employees.Id
+				Left Join TiVo_Data On TiVo_Data.[Contractor Number] = Ness_Employees.EDCPersonalNumber
+		Where
+			(Ness_Employee_Contract.EndDate >= @BeginingOfMonth Or Ness_Employee_Contract.EndDate Is Null)
+			And ([Time Entry Date] >= @BeginingOfMonth And [Time Entry Date] <= @EndOfMonth)
+		Group By
+			Ness_Employees.Id
+			,Ness.dbo.TiVo_Data.[Contractor Number]
+			,TiVo_Data.[Project Number]
+			,TiVo_Data.[Task Number]) As RawData
+	Where
+		RawData.EmployeeId = @paramEmployeeId
+		And ((RawData.Project = 'SAP 1082' And RawData.Task = '003') Or (RawData.Project = 'SAP 1173' And RawData.Task = '003'))
+
+
+	Select
+		@JoinedOn = Case When Ness_Employee_Contract.StartDate >= @BeginingOfMonth Then DateDiff(dd, @BeginingOfMonth, Ness_Employee_Contract.StartDate) Else 0 End
+		,@LeavingOn = Case When Ness_Employee_Contract.EndDate <= @EndOfMonth Then DateDiff(dd, @BeginingOfMonth, Ness_Employee_Contract.EndDate) Else 100 End
+	From
+		Ness_Employees With(NoLock)
+			Inner Join Ness_Employee_Contract With(NoLock) On Ness_Employees.Id = Ness_Employee_Contract.EmployeeId
+	Where
+		Ness_Employees.Id = @paramEmployeeId
+
+	If @JoinedOn > 0
+	Begin
+		Set @JoinedOn += 1
+	End
+
+	If @LeavingOn != 100
+	Begin
+		Set @LeavingOn += 1
+	End
+
+	Set @ResultData = Case When @VacationDays > 0 Then Cast(@VacationDays as varchar(10)) + ' vacation day' Else '' End
+	Set @ResultData += Case When @VacationDays > 1 Then 's' Else '' End
+	Set @AddComma = Case When @VacationDays > 0  Then 1 Else 0 End
+
+	If @AddComma = 1
+	Begin
+		Set @ResultData = @ResultData + Case When @JoinedOn > 0 Then ', joined on ' + Cast(@JoinedOn as varchar(10)) Else '' End
+		If @JoinedOn = 0
+			Set @AddComma = 0
+	End
+	Else
+	Begin
+		Set @ResultData = @ResultData + Case When @JoinedOn > 0 Then 'joined on ' + Cast(@JoinedOn as varchar(10)) Else '' End
+		If @JoinedOn = 0
+			Set @AddComma = 0
+	End
+
+	If @JoinedOn > 0
+	Begin
+		Set @ResultData += Case
+			When @JoinedOn % 100 in (11, 12, 13) Then 'th'
+			When @JoinedOn % 10 = 1 Then 'st'
+			When @JoinedOn % 10 = 2 Then 'nd'
+			When @JoinedOn % 10 = 3 Then 'rd'
+			Else 'th'
+		End
+	End
+
+	If @AddComma = 1
+	Begin
+		Set @ResultData = @ResultData + Case When @LeavingOn != 100 Then ', last day on ' + Cast(@LeavingOn as varchar(10)) Else '' End
+		If @LeavingOn = 100
+			Set @AddComma = 0
+	End
+	Else
+	Begin
+		Set @ResultData = @ResultData + Case When @LeavingOn != 100 Then 'last day on ' + Cast(@LeavingOn as varchar(10)) Else '' End
+		If @LeavingOn = 100
+			Set @AddComma = 0
+	End
+	
+	If @LeavingOn != 100
+	Begin
+		Set @ResultData += Case
+			When @LeavingOn % 100 in (11, 12, 13) Then 'th'
+			When @LeavingOn % 10 = 1 Then 'st'
+			When @LeavingOn % 10 = 2 Then 'nd'
+			When @LeavingOn % 10 = 3 Then 'rd'
+			Else 'th'
+		End
+	End
+
+	Return @ResultData
+End
+
+Go
 
 IF OBJECT_ID(N'dbo.ufnGetInvoiceRawData', N'TF') Is Not Null
     Drop Function dbo.ufnGetInvoiceRawData;
@@ -379,6 +511,7 @@ Returns @retInvoiceRawData Table
 (
     -- Columns returned by the function
     Id int Identity Primary Key Not Null, 
+	EmployeeId Int Not Null,
 	ShortText VarChar(50) Null,
     OldPONumber VarChar(50) Null, 
     TiVo_Contractor_Name NVarChar(50) Null, 
@@ -389,7 +522,8 @@ Returns @retInvoiceRawData Table
 	HoursLogged Int Null,
 	LineAmount Decimal(28,15) Null,
 	Project VarChar(50) Null,
-	Task VarChar(50) Null
+	Task VarChar(50) Null,
+	Comments VarChar(255) Null
 )
 AS 
 -- Returns the first name, last name, job title, and contact type for the specified contact.
@@ -404,7 +538,8 @@ Begin
 
 	Insert Into @retInvoiceRawData
 	Select 
-		@ShortText
+		Ness_Employees.Id
+		,@ShortText
 		,349926 As OldPONumber
 		,Max(Ness.dbo.TiVo_Data.[Contractor Name]) As [Contractor Name]
 		,Max(Ness.dbo.Ness_Employees.LastName) as LastName
@@ -421,16 +556,14 @@ Begin
 			Else (Max(Ness_Employee_Contract.Rate) * Sum(TiVo_Data.[Worked Hours])) / @BillableHours End As LineAmount
 		,TiVo_Data.[Project Number] As Project
 		,TiVo_Data.[Task Number] As Task
+		,dbo.ufnGetEmployeeComments(Ness_Employees.Id, @InvoiceMonth, @HoursInMonth, @BillableHours)
 	From 
 		Ness_Employees
 			Left Join Ness_Employee_Contract on Ness_Employee_Contract.EmployeeId = Ness_Employees.Id
 			Left Join TiVo_Data On TiVo_Data.[Contractor Number] = Ness_Employees.EDCPersonalNumber
-			Left Join Ness_Contract_Salaries On Ness_Contract_Salaries.ContractId = Ness_Employee_Contract.Id
 	Where
 		(Ness_Employee_Contract.EndDate >= @BeginingOfMonth Or Ness_Employee_Contract.EndDate Is Null)
 		And ([Time Entry Date] >= @BeginingOfMonth And [Time Entry Date] <= @EndOfMonth)
-		--And ([Project Number] Not In ('SAP 1082') or [Project Number] Is Null)
-		--And ([Task Number] Not In ('003') Or [Task Number] Is Null)
 	Group By
 		Ness_Employees.Id
 		,Ness.dbo.TiVo_Data.[Contractor Number]
@@ -445,9 +578,9 @@ End
 Go
 
 
-IF OBJECT_ID(N'dbo.ufnGetMissingInvoiceInfo', N'TF') Is Not Null
+If Object_Id(N'dbo.ufnGetMissingInvoiceInfo', N'TF') Is Not Null
     Drop Function dbo.ufnGetMissingInvoiceInfo;
-GO
+Go
 
 Create Function dbo.ufnGetMissingInvoiceInfo(@HoursInMonth Int, @InvoiceMonth int = 1)
 Returns @retMissingInvoiceData Table
@@ -476,29 +609,20 @@ Begin
 		,Max(Ness.dbo.Ness_Employees.FirstName) as FirstName
 		,Ness.dbo.TiVo_Data.[Contractor Number]
 		,(Case When Max(Ness_Employee_Contract.Rate) Is Null Then 0 Else Max(Ness_Employee_Contract.Rate) End / @HoursInMonth) As [Hourly Rate]
-		,dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth) - 
-		-- Sum(TiVo_Data.[Worked Hours]) As [Hours Missing]
-		(Case When Sum(TiVo_Data.[Worked Hours]) Is Null Then 0 Else Sum(TiVo_Data.[Worked Hours]) End) As [Hours Missing]
-		--,@HoursInMonth - Sum(TiVo_Data.[Worked Hours]) As [Hours Missing]
+		,dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth) - (Case When Sum(TiVo_Data.[Worked Hours]) Is Null Then 0 Else Sum(TiVo_Data.[Worked Hours]) End) As [Hours Missing]
 		,Sum(TiVo_Data.[Worked Hours]) As [Hours Worked]
 		,Case When Max(Ness_Employee_Contract.Rate) Is Null Then 0 Else (Max(Ness_Employee_Contract.Rate) * (dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth) - Sum(TiVo_Data.[Worked Hours]))) / @HoursInMonth End As LineAmount
-		--,Case When Max(Ness_Employee_Contract.Rate) Is Null Then 0 Else (Max(Ness_Employee_Contract.Rate) * (@HoursInMonth - Sum(TiVo_Data.[Worked Hours]))) / @HoursInMonth End As LineAmount
 	From 
 		Ness_Employees
 			Left Join Ness_Employee_Contract on Ness_Employee_Contract.EmployeeId = Ness_Employees.Id
 			Left Join TiVo_Data On TiVo_Data.[Contractor Number] = Ness_Employees.EDCPersonalNumber
-			Left Join Ness_Contract_Salaries On Ness_Contract_Salaries.ContractId = Ness_Employee_Contract.Id
 	Where
 		(Ness_Employee_Contract.EndDate >= @BeginingOfMonth Or Ness_Employee_Contract.EndDate Is Null)
 		And ([Time Entry Date] >= @BeginingOfMonth And [Time Entry Date] <= @EndOfMonth)
-		Or Ness_Employees.EDCPersonalNumber Is Null
-		--And ([Project Number] Not In ('SAP 1082') or [Project Number] Is Null)
-		--And ([Task Number] Not In ('003') Or [Task Number] Is Null)
+		Or TiVo_Data.[Contractor Number] Is Null
 	Group By
 		Ness_Employees.Id
 		,Ness.dbo.TiVo_Data.[Contractor Number]
-		--,TiVo_Data.[Project Number]
-		--,TiVo_Data.[Task Number]
 	Order By
 		Max(LastName)
 
@@ -506,3 +630,4 @@ Begin
 End
 
 Go
+

@@ -1,3 +1,5 @@
+-- This inert will "convert" data used by TiVo finance to the "standard" used in this DB
+
 Delete from TiVo_Data
 
 Insert Into TiVo_Data (

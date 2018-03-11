@@ -3,7 +3,7 @@ Use Ness
 
 -- 1 Get current rate card for employee
 Declare @LastName varchar(50)
-Set @LastName = 'Adomnicai'
+Set @LastName = '%Stincescu%'
 
 Select 
 	LastName, FirstName, Rate, *
@@ -11,7 +11,9 @@ From
 	Ness_Employees
 		Left Join Ness_Employee_Contract On Ness_Employees.Id = Ness_Employee_Contract.EmployeeId
 Where
-	Ness_Employees.LastName = @LastName
+	Ness_Employees.LastName like @LastName
+--Order By
+--	Ness_Employees.LastName
 
 -- 2 Get all employees in TREC
 Declare @IsActive bit

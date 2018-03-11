@@ -648,7 +648,7 @@ Begin
 
 		If @RecordCount > 1
 		Begin
-			Print 'Warning: For ' + @PersonnelId + ' on ' + Cast(@ExpenditureDate as varchar(50)) + ' for project ' + @ProjectNumber + ' and task ' + @TaskNumber + ' there are ' + Cast(@RecordCount as varchar(10)) + ' entries in TiVo_Data'
+			Print 'Warning: For ' + @PersonnelId + ' on ' + Cast(@ExpenditureDate as varchar(50)) + ' logged ' + Cast(@Quantity as varchar(10)) + ' hours for project ' + @ProjectNumber + ' and task ' + @TaskNumber + ' there are ' + Cast(@RecordCount as varchar(10)) + ' entries in TiVo_Data'
 		End
 
 		If @RecordCount = 0

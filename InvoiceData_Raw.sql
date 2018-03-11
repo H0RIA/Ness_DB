@@ -32,8 +32,7 @@ Where
 HoursMissing != 0 or 
 HoursMissing is null
 
-Select dbo.ufnGetEmployeeComments(18, 1, 184, 160)
-
+-- Select dbo.ufnGetEmployeeComments(18, 1, 184, 160)
 -- Select dbo.ufnGetEmployeeHoursInMonth(75, 1) as mata
 
 

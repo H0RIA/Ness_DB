@@ -582,7 +582,7 @@ Begin
 	Select 
 		Max(Ness.dbo.Ness_Employees.LastName) as LastName
 		,Max(Ness.dbo.Ness_Employees.FirstName) as FirstName
-		,Ness.dbo.TiVo_Data.[Contractor Number]
+		,Max(Ness.dbo.Ness_Employees.EDCPersonalNumber)
 		,(Case When Max(Ness_Employee_Contract.Rate) Is Null Then 0 Else Max(Ness_Employee_Contract.Rate) End / @HoursInMonth) As [Hourly Rate]
 		,dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth) - (Case When Sum(TiVo_Data.[Worked Hours]) Is Null Then 0 Else Sum(TiVo_Data.[Worked Hours]) End) As [Hours Missing]
 		,Sum(TiVo_Data.[Worked Hours]) As [Hours Worked]

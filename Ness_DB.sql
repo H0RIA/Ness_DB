@@ -229,31 +229,6 @@ Where
 	F1 = 'SES_Tivo'
 	Or F1 = 'SES_TIVO'
 
--- Mihaela Capusneanu
--- Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate) Values(71, '2017-12-15 21:20:55.723', Null, 2687.82) 
-
--- Cristian Streba
--- Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate) Values(76, '2018-01-15 21:20:55.723', Null, 3814.21) 
-
--- Eugen Anghel
--- Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate) Values(77, '2018-01-15 21:20:55.723', Null, 7208.09) 
-
--- Mihai Sirghe
--- Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate) Values(78, '2018-01-15 21:20:55.723', Null, 6037.13) 
-
--- Ionel Lescai
--- Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate) Values(79, '2018-01-17 21:20:55.723', Null, 5265.06) 
-
--- Ionut Stincescu
--- Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate) Values(80, '2018-01-31 00:01:00.000', Null, 3238.33) 
-
--- Vlad Adomnicai
--- Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate) Values(75, '2018-01-08 00:01:00.000', Null, 5010.82) 
-
--- Bogdan Dragoi
--- Update Ness_Employee_Contract Set EndDate = Cast('2018-03-16 00:01:00.000' as datetime) Where Id = 1162
-
--- Ionut Apopei
 
 CREATE TABLE [dbo].[TiVo_Data](
 	[Supplier Number] [float] NULL,

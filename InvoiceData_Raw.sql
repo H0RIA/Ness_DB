@@ -8,6 +8,15 @@ Where
 	And Not (Project = 'SAP 1173' And Task = '003')
 Order By LastName
 
+Select * 
+From Ness_Employees 
+	Inner Join Ness_Employee_Contract On Ness_Employees.Id = Ness_Employee_Contract.EmployeeId
+Where
+	Ness_Employees.Id = 85
+Order By LastName
+
+Select X = dbo.ufnGetEmployeeHoursInMonth(33, 1)
+
 Declare @BillableHours int
 Set @BillableHours = 160
 

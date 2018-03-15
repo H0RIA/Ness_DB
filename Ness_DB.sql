@@ -1,5 +1,7 @@
 Use Ness
 
+ALTER DATABASE Ness SET COMPATIBILITY_LEVEL = 130 
+
 If Exists (Select * From sys.tables Where name = 'TiVo_Data')
 Begin
 	Drop Table TiVo_Data
@@ -152,6 +154,10 @@ Create Table Ness_Employees(
 	Index IDX_NESS_EMPLOYEES_ID(Id)
 )
 
+Print 'Populate table Ness_Employees...'
+Insert Into Ness_Employees (FirstName, LastName, NessId, EDCId, IsTaxExempt, EDCPersonalNumber) 
+Select FirstName, LastName, Cast(Cast(Ness_ID as int) as varchar(20)), 1, Case When Tax_ext = 'yes' Then 1 else 0 End, [New Tivo]  From ['TREC-empls$'] 
+
 Print 'Created table Ness_Employee_Contract!'
 Create Table Ness_Employee_Contract(
 	Id int Identity Primary Key Not Null,
@@ -188,6 +194,15 @@ End
 
 GO
 
+Print 'Populate table Ness_Employee_Contract...'
+Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate)
+Select
+	Ness_Employees.Id, [Start date], null, [Bill Rate]
+From
+	Ness_Employees
+		Inner Join ['TREC-empls$'] On Ness_Employees.NessId = Ness_ID
+
+
 Print 'Created table Ness_Employee_Level!'
 Create Table Ness_Employee_Level(
 	Id int Identity Primary Key Not Null,
@@ -223,43 +238,11 @@ Select
 	,Null As EndDate
 	,F14 As Rate
 From 
-	Ness_GM_Import
+	Ness_GM_Import_December
 		Inner Join Ness_Employees On Ness_Employees.NessId = F4
 Where 
 	F1 = 'SES_Tivo'
 	Or F1 = 'SES_TIVO'
-
-
-CREATE TABLE [dbo].[TiVo_Data](
-	[Supplier Number] [float] NULL,
-	[Supplier Name] [nvarchar](255) NULL,
-	[Contractor Number] [float] NULL,
-	[Contractor Name] [nvarchar](255) NULL,
-	[Supervisor Name] [nvarchar](255) NULL,
-	[Time Entry Date] [datetime] NULL,
-	[Po Number] [float] NULL,
-	[Project Number] [nvarchar](255) NULL,
-	[Project Name] [nvarchar](255) NULL,
-	[Task Number] [nvarchar](255) NULL,
-	[Task Name] [nvarchar](255) NULL,
-	[Approver Name] [nvarchar](255) NULL,
-	[Approved Date] [nvarchar](255) NULL,
-	[Contractor Start Date] [nvarchar](255) NULL,
-	[Contractor End Date] [nvarchar](255) NULL,
-	[Expenditure Type] [nvarchar](255) NULL,
-	[Organization Name] [nvarchar](255) NULL,
-	[Hours Type] [nvarchar](255) NULL,
-	[Worked Hours] [float] NULL,
-	[UOM] [nvarchar](255) NULL,
-	[Contractor Rate] [nvarchar](255) NULL,
-	[Invoice Number] [nvarchar](255) NULL,
-	[Invoice Line Num] [nvarchar](255) NULL,
-	[Invoice Line Date] [nvarchar](255) NULL,
-	[Total Inv Amount] [nvarchar](255) NULL,
-	[Comments] [nvarchar](255) NULL,
-	[Actual Worked Hours (if different from Worked Hours)] [nvarchar](255) NULL
-) ON [PRIMARY]
-GO
 
 IF OBJECT_ID(N'dbo.ufnGetEmployeeHoursInMonth', N'FN') Is Not Null
     Drop Function dbo.ufnGetEmployeeHoursInMonth;
@@ -291,24 +274,61 @@ Begin
 	Where
 		Ness_Employee_Contract.EmployeeId = @paramEmployeeId
 
-	Set @BeginingOfMonth = Case When @ContractStart > @BeginingOfMonth Then @ContractStart Else @BeginingOfMonth End
-	Set @EndOfMonth = Case When @ContractEnd < @EndOfMonth Then @ContractEnd Else @EndOfMonth End
+	Set @BeginingOfMonth = Case When @ContractStart >= @BeginingOfMonth And @ContractStart <= @EndOfMonth Then @ContractStart Else @BeginingOfMonth End
+	Set @EndOfMonth = Case When @ContractEnd <= @EndOfMonth And @ContractEnd >= @BeginingOfMonth Then @ContractEnd Else @EndOfMonth End
 	
-	-- Business days in month
-	Set @EmployeeHours = (DateDiff(dd, @BeginingOfMonth, @EndOfMonth) + 1) 
-	-- Subtract weekend days 
-	Set @EmployeeHours -= (DateDiff(wk, @BeginingOfMonth, @EndOfMonth) * 2)
-	-- Substract start / end days in case they are weekends
-	Set @EmployeeHours -= (Case When DateName(dw, @BeginingOfMonth) = 'Sunday' Then 1 Else 0 End)
-	Set @EmployeeHours -= (Case When DateName(dw, @EndOfMonth) = 'Saturday' Then 1 Else 0 End)
+	If @ContractEnd < @BeginingOfMonth
+	Begin
+		Set @EmployeeHours = 0
+	End
+	Else
+	Begin
+		-- Business days in month
+		Set @EmployeeHours = (DateDiff(dd, @BeginingOfMonth, @EndOfMonth) + 1) 
+		-- Subtract weekend days 
+		Set @EmployeeHours -= (DateDiff(wk, @BeginingOfMonth, @EndOfMonth) * 2)
+		-- Substract start / end days in case they are weekends
+		Set @EmployeeHours -= (Case When DateName(dw, @BeginingOfMonth) = 'Sunday' Then 1 Else 0 End)
+		Set @EmployeeHours -= (Case When DateName(dw, @EndOfMonth) = 'Saturday' Then 1 Else 0 End)
 
-	Set @EmployeeHours *= 8
+		Set @EmployeeHours *= 8
+	End
 
 	Return @EmployeeHours
 
 End
 Go
 
+CREATE TABLE [dbo].[TiVo_Data](
+	[Supplier Number] [float] NULL,
+	[Supplier Name] [nvarchar](255) NULL,
+	[Contractor Number] [float] NULL,
+	[Contractor Name] [nvarchar](255) NULL,
+	[Supervisor Name] [nvarchar](255) NULL,
+	[Time Entry Date] [datetime] NULL,
+	[Po Number] [float] NULL,
+	[Project Number] [nvarchar](255) NULL,
+	[Project Name] [nvarchar](255) NULL,
+	[Task Number] [nvarchar](255) NULL,
+	[Task Name] [nvarchar](255) NULL,
+	[Approver Name] [nvarchar](255) NULL,
+	[Approved Date] [nvarchar](255) NULL,
+	[Contractor Start Date] [nvarchar](255) NULL,
+	[Contractor End Date] [nvarchar](255) NULL,
+	[Expenditure Type] [nvarchar](255) NULL,
+	[Organization Name] [nvarchar](255) NULL,
+	[Hours Type] [nvarchar](255) NULL,
+	[Worked Hours] [float] NULL,
+	[UOM] [nvarchar](255) NULL,
+	[Contractor Rate] [nvarchar](255) NULL,
+	[Invoice Number] [nvarchar](255) NULL,
+	[Invoice Line Num] [nvarchar](255) NULL,
+	[Invoice Line Date] [nvarchar](255) NULL,
+	[Total Inv Amount] [nvarchar](255) NULL,
+	[Comments] [nvarchar](255) NULL,
+	[Actual Worked Hours (if different from Worked Hours)] [nvarchar](255) NULL
+) ON [PRIMARY]
+GO
 
 IF OBJECT_ID(N'dbo.ufnGetEmployeeBillableLoggedHoursInMonth', N'FN') Is Not Null
     Drop Function dbo.ufnGetEmployeeBillableLoggedHoursInMonth;
@@ -402,8 +422,8 @@ Begin
 
 
 	Select
-		@JoinedOn = Case When Ness_Employee_Contract.StartDate >= @BeginingOfMonth Then DateDiff(dd, @BeginingOfMonth, Ness_Employee_Contract.StartDate) Else 0 End
-		,@LeavingOn = Case When Ness_Employee_Contract.EndDate <= @EndOfMonth Then DateDiff(dd, @BeginingOfMonth, Ness_Employee_Contract.EndDate) Else 100 End
+		@JoinedOn = Case When Ness_Employee_Contract.StartDate >= @BeginingOfMonth And Ness_Employee_Contract.StartDate <= @EndOfMonth Then DateDiff(dd, @BeginingOfMonth, Ness_Employee_Contract.StartDate) Else 0 End
+		,@LeavingOn = Case When Ness_Employee_Contract.EndDate <= @EndOfMonth And Ness_Employee_Contract.EndDate >= @BeginingOfMonth Then DateDiff(dd, @BeginingOfMonth, Ness_Employee_Contract.EndDate) Else 100 End
 	From
 		Ness_Employees With(NoLock)
 			Inner Join Ness_Employee_Contract With(NoLock) On Ness_Employees.Id = Ness_Employee_Contract.EmployeeId
@@ -731,3 +751,224 @@ Begin
 End
 
 Go
+
+If Object_Id(N'dbo.ufnGetNameSubstring', N'FN') Is Not Null
+    Drop Function dbo.ufnGetNameSubstring;
+Go
+
+-- If firstName = 1 returns thre first name, otherwise the last name
+Create Function dbo.ufnGetNameSubstring(@sourceString nvarchar(255), @token char, @firstName bit)
+Returns nvarchar(255)
+As
+Begin
+	Declare @Result nvarchar(255)
+	Declare @varFirstName nvarchar(255)
+	Declare @varLastName nvarchar(255)
+
+	DECLARE @SubStrings table 
+	( 
+		part nvarchar(255)
+	)
+
+	Insert Into @SubStrings (part)
+	Select value From STRING_SPLIT(@sourceString, @token)
+
+	Set @varFirstName = (Select Top 1 part from @SubStrings)
+	Set @varLastName = SUBSTRING(@sourceString, len(@varFirstName) + 2, len(@sourceString) - len(@varFirstName) - 1)
+
+	Set @Result = Case When @firstName = 1 Then @varFirstName Else @varLastName End
+
+	Return @Result
+End
+
+Go
+
+If Object_Id(N'dbo.uspImportEmployeesFromNessGM', N'P') Is Not Null
+    Drop Procedure dbo.uspImportEmployeesFromNessGM;
+Go
+
+Create Procedure dbo.uspImportEmployeesFromNessGM
+	@SourceTable nvarchar(50),
+	@Result int Out
+As
+SET NOCOUNT ON
+Begin
+	
+	Declare @FirstName nvarchar(255)
+	Declare @LastName nvarchar(255)
+	Declare @NessId nvarchar(50)
+	Declare @EDCId int
+	Declare @IsTaxExempt bit
+	Declare @RecordCount int
+	Declare @EDCPersonallNumber nvarchar(50)
+	Declare @SourceSQL nvarchar(500)
+	Declare @NessGMDataCursor Cursor
+
+	Set @Result = 0
+	Set @RecordCount = 0
+
+	Set @SourceSQL = N'Set @NessGMDataCursor = Cursor Local Read_Only Forward_Only Static For Select '
+	Set @SourceSQL += N'dbo.ufnGetNameSubstring(F5, '' '', 0) As FirstName, '
+	Set @SourceSQL += N'dbo.ufnGetNameSubstring(F5, '' '', 1) As LastName, '
+	Set @SourceSQL += N'Cast(Cast(F4 as int) as nvarchar(10)), '
+	Set @SourceSQL += N'1, 1, Null From ' + @SourceTable 
+	Set @SourceSQL += N' Where F1 = ''SES_TIVO'' Or F1 = ''SES_TIVO'' ';
+	Set @SourceSQL += N'; \
+	Open @NessGMDataCursor;'
+
+	Execute sp_executesql @SourceSQL, N'@NessGMDataCursor CURSOR OUTPUT', @NessGMDataCursor Output
+	
+	Fetch Next From @NessGMDataCursor   
+	Into @FirstName, @LastName, @NessId, @EDCId, @IsTaxExempt, @EDCPersonallNumber
+
+	While @@FETCH_STATUS = 0  
+	Begin
+		Select @RecordCount = Count(*) From Ness_Employees 
+		Where 
+			NessId = @NessId
+
+		If @RecordCount > 1
+		Begin
+			Print 'Warning: For ' + @NessId + ' there are ' + Cast(@RecordCount as varchar(10)) + ' entries in Ness_Employees'
+		End
+
+		If @RecordCount = 0
+		Begin
+			Print 'Adding data for user ' + @FirstName + ' ' + @LastName
+
+			Insert Into Ness_Employees (FirstName, LastName, NessId, EDCId, IsTaxExempt, EDCPersonalNumber)
+			Values(@FirstName, @LastName, @NessId, @EDCId, @IsTaxExempt, @EDCPersonallNumber)
+		End
+
+		Fetch Next From @NessGMDataCursor   
+		Into @FirstName, @LastName, @NessId, @EDCId, @IsTaxExempt, @EDCPersonallNumber
+	End
+
+	Close @NessGMDataCursor
+	Deallocate @NessGMDataCursor
+
+End
+
+Go
+
+
+If Object_Id(N'dbo.uspImportEmployeeContractsFromNessGM', N'P') Is Not Null
+    Drop Procedure dbo.uspImportEmployeeContractsFromNessGM;
+Go
+
+Create Procedure dbo.uspImportEmployeeContractsFromNessGM
+	@SourceTable nvarchar(50),
+	@Result int Out
+As
+SET NOCOUNT ON
+Begin
+
+	Declare @FirstName nvarchar(255)
+	Declare @LastName nvarchar(255)
+	Declare @NessId nvarchar(50)
+	Declare @EmployeeId int
+	Declare @EDCId int
+	Declare @IsTaxExempt bit
+	Declare @RecordCount int
+	Declare @EDCPersonallNumber nvarchar(50)
+	Declare @SourceSQL nvarchar(500)
+	Declare @NessGMDataCursor Cursor
+	Declare @BeginingOfMonth datetime
+	Declare @EndOfMonth datetime
+	Declare @JoinDate datetime
+	Declare @InvoiceMonth int
+	Declare @EndDate datetime
+	Declare @BillingStartDate datetime
+	Declare @BillingEndDate datetime
+	Declare @Rate decimal(28,15)
+
+	Set @Result = 0
+	Set @RecordCount = 0
+	
+	Set @JoinDate = @BeginingOfMonth 
+	Set @SourceSQL = N'Set @NessGMDataCursor = Cursor Local Read_Only Forward_Only Static For Select '
+	Set @SourceSQL += N'dbo.ufnGetNameSubstring(F5, '' '', 0) As FirstName, '
+	Set @SourceSQL += N'dbo.ufnGetNameSubstring(F5, '' '', 1) As LastName, '
+	Set @SourceSQL += N'F9 As JoinDate, '
+	Set @SourceSQL += N'F10 As BillingStartDate, '
+	Set @SourceSQL += N'F11 As BillingEndDate, '
+	Set @SourceSQL += N'F15 As BillRateUSD, '
+	Set @SourceSQL += N'Cast(Cast(F4 as int) as nvarchar(10)) As NessId '
+	Set @SourceSQL += N'From ' + @SourceTable 
+	Set @SourceSQL += N' Where F1 = ''SES_TIVO'' Or F1 = ''SES_TIVO'' ';
+	Set @SourceSQL += N'; \
+	Open @NessGMDataCursor;'
+
+	Execute sp_executesql @SourceSQL, N'@NessGMDataCursor CURSOR OUTPUT', @NessGMDataCursor Output
+	
+	Fetch Next From @NessGMDataCursor   
+	Into @FirstName, @LastName, @JoinDate, @BillingStartDate, @BillingEndDate, @Rate, @NessId
+
+	While @@FETCH_STATUS = 0  
+	Begin
+		
+		If @LastName = 'Buleu' And @FirstName = 'Daniel'
+		Begin
+			Fetch Next From @NessGMDataCursor   
+			Into @FirstName, @LastName, @JoinDate, @BillingStartDate, @BillingEndDate, @Rate, @NessId
+			Continue;
+		End
+
+		Select @EmployeeId = Id From Ness_Employees Where Ness_Employees.NessId = @NessId
+
+		Select @RecordCount = Count(*) From Ness_Employee_Contract
+		Where
+			Ness_Employee_Contract.EmployeeId = @EmployeeId 
+			And (EndDate > GetDate() Or EndDate Is Null)
+
+		Set @InvoiceMonth = Month(@BillingStartDate)
+		Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(Year(GetDate()) as varchar(4)) + '-01-01' )
+		Set @EndOfMonth = EOMonth(@BeginingOfMonth)
+
+		If @RecordCount = 0
+		Begin
+			Print 'Adding contract for user ' + @LastName + ' ' + @FirstName + '(' + @NessId + ')'
+			Set @EndDate = Null
+
+			If @BillingEndDate < @EndOfMonth	-- the user will leave during this month
+			Begin
+				Print 'Contract for user ' + @LastName + ' ' + @FirstName + '(' + @NessId + ') will end on ' + Cast(@BillingEndDate as nvarchar(20)) 
+				Set @EndDate = @BillingEndDate
+			End
+
+			If @BillingStartDate > @BeginingOfMonth -- the user joined this month
+			Begin
+				Print 'Contract for user ' + @LastName + ' ' + @FirstName + '(' + @NessId + ') will start on ' + Cast(@BillingStartDate as nvarchar(20)) 
+				Set @JoinDate = Case When @BillingStartDate Is Null Then @JoinDate Else @BillingStartDate End
+			End
+
+			Set @JoinDate = Case When @JoinDate Is Null Then @BillingStartDate Else @JoinDate End
+
+			Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate)
+			Values(@EmployeeId, @JoinDate, @EndDate, @Rate)
+		End
+
+		Fetch Next From @NessGMDataCursor   
+		Into @FirstName, @LastName, @JoinDate, @BillingStartDate, @BillingEndDate, @Rate, @NessId
+	End
+
+	Close @NessGMDataCursor
+	Deallocate @NessGMDataCursor
+		
+End
+
+Go
+
+Declare @SourceTable nvarchar(50)
+Declare @ResultValue int
+
+Set @SourceTable = N'TiVo_Data_Raw'
+Set @ResultValue = 0
+
+Execute dbo.uspImportDataFromTiVoRaw @SourceTable, @ResultValue;
+
+Set @SourceTable = N'Ness_GM_Import_December'
+Set @ResultValue = 0
+
+Execute dbo.uspImportEmployeesFromNessGM @SourceTable, @ResultValue;
+Execute dbo.uspImportEmployeeContractsFromNessGM @SourceTable, @ResultValue;

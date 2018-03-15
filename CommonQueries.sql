@@ -1,13 +1,6 @@
 -- Most used queries
 Use Ness
 
-Declare @SourceTable nvarchar(50)
-Declare @ResultValue int
-
-Set @SourceTable = N'TiVo_Data_Raw'
-Set @ResultValue = 0
-
-Execute dbo.uspImportDataFromTiVoRaw @SourceTable, @ResultValue;
 
 
 -- 1 Get current rate card for employee

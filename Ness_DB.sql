@@ -156,7 +156,8 @@ Create Table Ness_Employees(
 
 Print 'Populate table Ness_Employees...'
 Insert Into Ness_Employees (FirstName, LastName, NessId, EDCId, IsTaxExempt, EDCPersonalNumber) 
-Select FirstName, LastName, Cast(Cast(Ness_ID as int) as varchar(20)), 1, Case When Tax_ext = 'yes' Then 1 else 0 End, [New Tivo]  From ['TREC-empls$'] 
+Select FirstName, LastName, Case When Ness_ID Is Null Then 0 Else Cast(Cast(Ness_ID as int) as varchar(20)) End, 1, Case When Tax_ext = 'yes' Then 1 else 0 End, [New Tivo]  From Imported_Employees 
+Where LastName Is Not Null And Ness_ID Is Not Null
 
 Print 'Created table Ness_Employee_Contract!'
 Create Table Ness_Employee_Contract(
@@ -165,6 +166,7 @@ Create Table Ness_Employee_Contract(
 	StartDate DateTime Not Null,
 	EndDate DateTime,
 	Rate Decimal(28,15) Null,
+	IsFlex bit Not Null Default(0), 
 	Constraint FK_EmployeeId_Contract Foreign Key (EmployeeId) References Ness_Employees(Id),
 	Index IDX_NESS_EMPLOYEE_CONTRACT_ID(Id)
 )
@@ -179,28 +181,39 @@ After Insert
 As 
 Begin
 	Declare @CountInserted int
+	Declare @NeedToUpdate bit
+	
 	Set @CountInserted = (Select Count(*) from inserted)
-
+	Set @NeedToUpdate = 0
+	
 	print 'Inserted Ids count: ' + Cast(@CountInserted as varchar)
 
-	Update 
-		Ness_Employee_Contract 
-	Set 
-		Ness_Employee_Contract.EndDate = GetDate() 
-	Where 
-		Ness_Employee_Contract.EmployeeId In (Select inserted.EmployeeId  From  inserted With(NoLock))
-		And Ness_Employee_Contract.Id not in (Select inserted.Id  From  inserted With(NoLock))
+	Select @NeedToUpdate = Case When inserted.EndDate Is Null Then 1 Else 0 End From inserted
+
+	If @NeedToUpdate = 1
+	Begin
+		Update 
+			Ness_Employee_Contract 
+		Set 
+			Ness_Employee_Contract.EndDate = GetDate() 
+		Where 
+			Ness_Employee_Contract.EmployeeId In (Select inserted.EmployeeId  From  inserted With(NoLock))
+			And Ness_Employee_Contract.Id not in (Select inserted.Id  From  inserted With(NoLock))
+	End
 End
 
 GO
 
 Print 'Populate table Ness_Employee_Contract...'
+
 Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate)
 Select
 	Ness_Employees.Id, [Start date], null, [Bill Rate]
 From
 	Ness_Employees
-		Inner Join ['TREC-empls$'] On Ness_Employees.NessId = Ness_ID
+		Inner Join Imported_Employees On Ness_Employees.NessId = Ness_ID
+Where 
+	Imported_Employees.[Start date] Is Not Null
 
 
 Print 'Created table Ness_Employee_Level!'
@@ -229,13 +242,12 @@ Create Table Ness_Contract_Salaries(
 
 Delete From Ness_Employee_Contract
 
+/*
 Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate)
 Select 
-	--,Ness_Employees.FirstName
-	--,Ness_Employees.LastName
 	Ness_Employees.Id
-	,GetDate() As StartDate
-	,Null As EndDate
+	,Case When F9 Is Null Then GetDate() Else F9 End As StartDate
+	,Case When F11 Is Not Null Then (Case When F11 < EOMonth(F11) Then  F11 Else Null End) Else Null End As EndDate
 	,F14 As Rate
 From 
 	Ness_GM_Import_December
@@ -243,6 +255,7 @@ From
 Where 
 	F1 = 'SES_Tivo'
 	Or F1 = 'SES_TIVO'
+*/
 
 IF OBJECT_ID(N'dbo.ufnGetEmployeeHoursInMonth', N'FN') Is Not Null
     Drop Function dbo.ufnGetEmployeeHoursInMonth;
@@ -922,8 +935,16 @@ Begin
 			And (EndDate > GetDate() Or EndDate Is Null)
 
 		Set @InvoiceMonth = Month(@BillingStartDate)
-		Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(Year(GetDate()) as varchar(4)) + '-01-01' )
+		Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(Year(@BillingStartDate) as varchar(4)) + '-01-01' )
 		Set @EndOfMonth = EOMonth(@BeginingOfMonth)
+
+		If @BillingEndDate <= @BeginingOfMonth
+		Begin
+			-- We don't have billing info for this month...
+			Fetch Next From @NessGMDataCursor   
+			Into @FirstName, @LastName, @JoinDate, @BillingStartDate, @BillingEndDate, @Rate, @NessId
+			Continue;
+		End
 
 		If @RecordCount = 0
 		Begin
@@ -932,20 +953,40 @@ Begin
 
 			If @BillingEndDate < @EndOfMonth	-- the user will leave during this month
 			Begin
-				Print 'Contract for user ' + @LastName + ' ' + @FirstName + '(' + @NessId + ') will end on ' + Cast(@BillingEndDate as nvarchar(20)) 
+				Print 'Contract for user ' + @LastName + ' ' + @FirstName + '(' + @NessId + ') will end on ' + Cast(@BillingEndDate as nvarchar(20))
 				Set @EndDate = @BillingEndDate
 			End
 
 			If @BillingStartDate > @BeginingOfMonth -- the user joined this month
 			Begin
 				Print 'Contract for user ' + @LastName + ' ' + @FirstName + '(' + @NessId + ') will start on ' + Cast(@BillingStartDate as nvarchar(20)) 
-				Set @JoinDate = Case When @BillingStartDate Is Null Then @JoinDate Else @BillingStartDate End
+				Set @JoinDate = Case When @JoinDate Is Null Then @BillingStartDate Else @JoinDate End
 			End
 
 			Set @JoinDate = Case When @JoinDate Is Null Then @BillingStartDate Else @JoinDate End
-
-			Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate)
-			Values(@EmployeeId, @JoinDate, @EndDate, @Rate)
+			If Exists (	Select * 
+						From 
+							Ness_Employees
+								Inner Join Ness_Employee_Contract On Ness_Employees.Id = Ness_Employee_Contract.EmployeeId
+						Where
+							Ness_Employees.NessId = @NessId)
+			Begin
+				-- An update is required
+				Print 'Updating contract information for ' +  @LastName + ' ' + @FirstName + '...'
+				Update Ness_Employee_Contract
+				Set 
+					StartDate = @JoinDate,
+					EndDate = @EndDate, 
+					Rate = @Rate
+				Where
+					Ness_Employee_Contract.EmployeeId = @EmployeeId
+			End
+			Else
+			Begin
+				-- Insert is required
+				Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate)
+				Values(@EmployeeId, @JoinDate, @EndDate, @Rate)
+			End
 		End
 
 		Fetch Next From @NessGMDataCursor   
@@ -972,3 +1013,104 @@ Set @ResultValue = 0
 
 Execute dbo.uspImportEmployeesFromNessGM @SourceTable, @ResultValue;
 Execute dbo.uspImportEmployeeContractsFromNessGM @SourceTable, @ResultValue;
+
+
+If Object_Id(N'dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport', N'P') Is Not Null
+    Drop Procedure dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport;
+Go
+
+Create Procedure dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport
+	@SourceTable nvarchar(50),
+	@Overwrite bit,
+	@Result int Out
+As
+SET NOCOUNT ON
+Begin
+
+	Declare @LastName nvarchar(50)
+	Declare @FirstName nvarchar(50)
+	Declare @Rate Decimal(28,15)
+	Declare @NessId nvarchar(10)
+	Declare @TaxExempt bit
+	Declare @EDCPersonalNumber varchar(20)
+	Declare @SourceSQL nvarchar(500)
+	Declare @MonthlyDataCursor Cursor
+	
+	Set @Result = 0
+	
+	Set @SourceSQL = N'Set @MonthlyDataCursor = Cursor Local Read_Only Forward_Only Static For Select '
+	Set @SourceSQL += N'F3, '
+	Set @SourceSQL += N'F4, '
+	Set @SourceSQL += N'F10 As Rate, '
+	Set @SourceSQL += N'Cast(Cast(F11 as int) as varchar(10)) As NessId, '
+	Set @SourceSQL += N'Case When F12 = ''yes'' then 1 else 0 End As IsTaxExempt, '
+	Set @SourceSQL += N'F13 As EDCPersonalNumber '
+	Set @SourceSQL += N'From ' + @SourceTable 
+	Set @SourceSQL += N'; \
+	Open @MonthlyDataCursor;'
+
+	Execute sp_executesql @SourceSQL, N'@MonthlyDataCursor CURSOR OUTPUT', @MonthlyDataCursor Output
+	
+	Fetch Next From @MonthlyDataCursor   
+	Into @LastName, @FirstName, @Rate, @NessId, @TaxExempt, @EDCPersonalNumber
+
+	While @@FETCH_STATUS = 0  
+	Begin
+		Declare @RecordCount int
+
+		Set @RecordCount = 0
+
+		Select @RecordCount = Count(*) From Imported_Employees Where Ness_ID = @NessId
+		
+		If @RecordCount = 0
+		Begin
+			Print 'Adding user ' + @LastName + ' ' + @FirstName + '(' + @NessId + ')'
+			
+			Insert Into Imported_Employees (LastName, FirstName, [Bill Rate], Ness_ID, Tax_ext, [New Tivo])
+			Values(@LastName, @FirstName, @Rate, @NessId, @TaxExempt, @EDCPersonalNumber)
+		End
+		Else
+		Begin
+			Set @Result = 1
+		End
+
+		Fetch Next From @MonthlyDataCursor   
+		Into @LastName, @FirstName, @Rate, @NessId, @TaxExempt, @EDCPersonalNumber
+	End
+
+	Close @MonthlyDataCursor
+	Deallocate @MonthlyDataCursor
+		
+End
+
+Go
+
+Print 'MUST IMPORT THE FILES THAT ARE NAMED LIKE THIS TREC-HC-16Jan18-salarii'
+Print 'After that operation is done execute the script uspImportEmployeeData_FromMonthlyNessHeadCountReport as many times as it is necessary.'
+Print 'Bellow you have an example that WILL NOT WORK unless data is imported'
+
+Begin
+Declare @SourceTable nvarchar(50)
+Declare @ResultValue int
+
+Set @SourceTable = N'TREC_HC_Feb18'
+Set @ResultValue = 0
+
+Execute dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport @SourceTable, 1, @ResultValue;
+
+Set @SourceTable = N'TREC_HC_Jan18'
+Set @ResultValue = 0
+
+Execute dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport @SourceTable, 1, @ResultValue;
+
+Set @SourceTable = N'TREC_HC_Dec17'
+Set @ResultValue = 0
+
+Execute dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport @SourceTable, 1, @ResultValue;
+
+Set @SourceTable = N'TREC_HC_Nov17'
+Set @ResultValue = 0
+
+Execute dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport @SourceTable, 1, @ResultValue;
+
+End

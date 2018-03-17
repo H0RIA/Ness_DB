@@ -12,10 +12,8 @@ Select *
 From Ness_Employees 
 	Inner Join Ness_Employee_Contract On Ness_Employees.Id = Ness_Employee_Contract.EmployeeId
 Where
-	Ness_Employees.Id = 85
+	Ness_Employees.Id = 45
 Order By LastName
-
-Select X = dbo.ufnGetEmployeeHoursInMonth(33, 1)
 
 Declare @BillableHours int
 Set @BillableHours = 160

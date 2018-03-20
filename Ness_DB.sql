@@ -242,21 +242,6 @@ Create Table Ness_Contract_Salaries(
 
 Delete From Ness_Employee_Contract
 
-/*
-Insert Into Ness_Employee_Contract (EmployeeId, StartDate, EndDate, Rate)
-Select 
-	Ness_Employees.Id
-	,Case When F9 Is Null Then GetDate() Else F9 End As StartDate
-	,Case When F11 Is Not Null Then (Case When F11 < EOMonth(F11) Then  F11 Else Null End) Else Null End As EndDate
-	,F14 As Rate
-From 
-	Ness_GM_Import_December
-		Inner Join Ness_Employees On Ness_Employees.NessId = F4
-Where 
-	F1 = 'SES_Tivo'
-	Or F1 = 'SES_TIVO'
-*/
-
 IF OBJECT_ID(N'dbo.ufnGetEmployeeHoursInMonth', N'FN') Is Not Null
     Drop Function dbo.ufnGetEmployeeHoursInMonth;
 GO
@@ -796,9 +781,9 @@ Begin
 	Declare @WorkedHours float
 	Declare @UOM nvarchar(255)
 
-	Declare @Quantity float
+	--Declare @Quantity float
 	Declare @RecordCount int
-	Declare @SourceSQL nvarchar(255)
+	Declare @SourceSQL nvarchar(2000)
 	Declare @TiVoDataCursor Cursor
 
 	Set @Result = 0
@@ -824,21 +809,34 @@ Begin
 			[Organization Name],	 \
 			[Hours Type],			 \
 			[Worked Hours],			 \
-			[UOM],					 \
-			[Contractor Rate],		 \
-			[Invoice Number],		 \
-			[Invoice Line Num],\
-			[Invoice Line Date],\
-			[Total Inv Amount],\
-			[Comments],\
-			[Actual Worked Hours (if different from Worked Hours)]), \
+			[UOM]					 \
 			From ' + @SourceTable;
 	Set @SourceSQL += N'; \
 	Open @TiVoDataCursor;'
 	Execute sp_executesql @SourceSQL, N'@TiVoDataCursor CURSOR OUTPUT', @TiVoDataCursor Output
 	
 	Fetch Next From @TiVoDataCursor   
-	Into @ContractorNumber, @TimeEntryDate, @ProjectNumber, @TaskNumber, @Quantity
+	Into  
+		@SupplierNumber,
+		@SupplierName,
+		@ContractorNumber,
+		@ContractorName,
+		@SupervisorName,
+		@TimeEntryDate,
+		@PONumber,
+		@ProjectNumber,
+		@ProjectName,
+		@TaskNumber,
+		@TaskName,
+		@ApproverName,
+		@ApproverDate,
+		@ContractorStartDate,
+		@ContractorEndDate,
+		@ExpenditureType,
+		@OrgName,
+		@HoursType,
+		@WorkedHours,
+		@UOM
 
 	While @@FETCH_STATUS = 0  
 	Begin
@@ -848,11 +846,11 @@ Begin
 			And [Time Entry Date] = @TimeEntryDate
 			And [Project Number] = @ProjectNumber
 			And [Task Number] = @TaskNumber
-			And [Worked Hours] = @Quantity
+			And [Worked Hours] = @WorkedHours
 
 		If @RecordCount > 1
 		Begin
-			Print 'Warning: For ' + @ContractorNumber + ' on ' + Cast(@TimeEntryDate as varchar(50)) + ' logged ' + Cast(@Quantity as varchar(10)) + ' hours for project ' + @ProjectNumber + ' and task ' + @TaskNumber + ' there are ' + Cast(@RecordCount as varchar(10)) + ' entries in TiVo_Data'
+			Print 'Warning: For ' + @ContractorNumber + ' on ' + Cast(@TimeEntryDate as varchar(50)) + ' logged ' + Cast(@WorkedHours as varchar(10)) + ' hours for project ' + @ProjectNumber + ' and task ' + @TaskNumber + ' there are ' + Cast(@RecordCount as varchar(10)) + ' entries in TiVo_Data'
 		End
 
 		If @RecordCount = 0
@@ -887,47 +885,60 @@ Begin
 				[Total Inv Amount],
 				[Comments],
 				[Actual Worked Hours (if different from Worked Hours)])
-			Select 
-				[Vendor Number],		-- [Supplier Number]
-				[Vendor Name],			-- [Supplier Name]
-				[Personnel Id],			-- [Contractor Number]
-				[Personnel Name],		-- [Contractor Name]
-				Null,					-- [Supervisor Name]
-				[Expenditure Date],		-- [Time Entry Date]
-				[PO Number],			-- [Po Number]
-				[Project Number],		-- [Project Number]
-				[Project Name],			-- [Project Name]
-				[Task Number],			-- [Task Number]
-				[Task Name],			-- [Task Name]
-				Null,					-- [Approver Name]
-				Null,					-- [Approved Date]
-				Null,					-- [Contractor Start Date]
-				Null,					-- [Contractor End Date]
-				[Expenditure Type],		-- [Expenditure Type]
-				[Project Organization],	-- [Organization Name]
-				Null,					-- [Hours Type]
-				[Quantity],				-- [Worked Hours]
-				[UOM],					-- [UOM]
+			Values( 
+				@SupplierNumber,
+				@SupplierName,
+				@ContractorNumber,
+				@ContractorName,
+				@SupervisorName,
+				@TimeEntryDate,
+				@PONumber,
+				@ProjectNumber,
+				@ProjectName,
+				@TaskNumber,
+				@TaskName,
+				@ApproverName,
+				@ApproverDate,
+				@ContractorStartDate,
+				@ContractorEndDate,
+				@ExpenditureType,
+				@OrgName,
+				@HoursType,
+				@WorkedHours,
+				@UOM,
 				Null,					-- [Contractor Rate]
-				[Invoice Number],		-- [Invoice Number]
+				Null,
 				Null, -- Invoice line num
 				Null, -- Invoice line date
 				Null, -- total invoice amount
 				Null, -- comments
 				Null -- Actual worked hours
-			From 
-				TiVo_Data_Raw
-			Where
-				[Personnel Id] = @ContractorNumber
-				And [Expenditure Date] = @TimeEntryDate
-				And [Project Number] = @ProjectNumber
-				And [Task Number] = @TaskNumber
-				And [Quantity] = @Quantity
+				)
 		End
 
 		Fetch Next From @TiVoDataCursor   
-		Into @ContractorNumber, @TimeEntryDate, @ProjectNumber, @TaskNumber, @Quantity
-	End
+		Into  
+			@SupplierNumber,
+			@SupplierName,
+			@ContractorNumber,
+			@ContractorName,
+			@SupervisorName,
+			@TimeEntryDate,
+			@PONumber,
+			@ProjectNumber,
+			@ProjectName,
+			@TaskNumber,
+			@TaskName,
+			@ApproverName,
+			@ApproverDate,
+			@ContractorStartDate,
+			@ContractorEndDate,
+			@ExpenditureType,
+			@OrgName,
+			@HoursType,
+			@WorkedHours,
+			@UOM
+		End
 
 	Close @TiVoDataCursor
 	Deallocate @TiVoDataCursor
@@ -1256,6 +1267,183 @@ End
 
 Go
 
+
+If Object_Id(N'dbo.ufnEmployeeTimesheetDetails', N'TF') Is Not Null
+    Drop Function dbo.ufnEmployeeTimesheetDetails;
+Go
+
+Create Function dbo.ufnEmployeeTimesheetDetails(@EmployeeTiVoID nvarchar(20), @HoursInMonth Int, @InvoiceMonth int, @InvoiceYear int)
+Returns @retTimesheetDetails Table
+(
+    -- Columns returned by the function
+    Id int Identity Primary Key Not Null, 
+	ContractorNumber nVarChar(20) Null, 
+    EntryDate datetime null,
+	PONumber float null,
+	ProjectNumber nvarchar(255) null,
+	TaskNumber nvarchar(255) null,
+	HoursLogged float null,
+	IsWeekend bit null,
+	IsMissing bit not null default(1)
+)
+AS 
+Begin
+	Declare @BeginingOfMonth datetime
+	Declare @EndOfMonth datetime
+	Declare @CurrentDay datetime
+	Declare @IsWeekend bit
+	Declare @MonthDays int
+	Declare @ContractorNumber nVarChar(20)
+	Declare @EntryDate datetime
+	Declare @PoNumber float
+	Declare @ProjectNumber nvarchar(255)
+	Declare @TaskNumber nvarchar(255)
+	Declare @WorkedHours float
+	Declare @TotalHours float
+
+	Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(@InvoiceYear as varchar(4)) + '-01-01' )
+	Set @EndOfMonth = EOMonth(@BeginingOfMonth)
+	Set @MonthDays = DATEDIFF(day, @BeginingOfMonth, @EndOfMonth)
+	Set @CurrentDay = @BeginingOfMonth
+	Set @IsWeekend = Case When (DateName(Weekday, @CurrentDay) = 'Saturday' Or DateName(Weekday, @CurrentDay) = 'Sunday') Then 1 Else 0 End
+
+	-- Create entries for all the days in the month
+	While @MonthDays >= 0
+	Begin
+
+		Insert into @retTimesheetDetails (EntryDate, IsWeekend) Values(@CurrentDay, @IsWeekend)
+
+		Set @CurrentDay = DateAdd(day, 1, @CurrentDay)
+		Set @IsWeekend = Case When (DateName(Weekday, @CurrentDay) = 'Saturday' Or DateName(Weekday, @CurrentDay) = 'Sunday') Then 1 Else 0 End
+		Set @MonthDays = @MonthDays - 1
+	End
+
+	-- Update the timesheet
+	DECLARE TiVoTimesheetCursor CURSOR FOR   
+	SELECT Cast(Cast([Contractor Number] as int) as nvarchar(20)), [Time Entry Date], [Po Number], [Project Number], [Task Number], [Worked Hours]
+	From TiVo_Data
+	Where Cast(Cast([Contractor Number] as int) as nvarchar(20)) = @EmployeeTiVoID
+
+	Open TiVoTimesheetCursor
+	
+	Fetch Next From TiVoTimesheetCursor   
+	Into @ContractorNumber, @EntryDate, @PoNumber, @ProjectNumber, @TaskNumber, @WorkedHours
+
+	While @@FETCH_STATUS = 0
+	Begin
+		Update @retTimesheetDetails Set 
+			ContractorNumber = @ContractorNumber,
+			PONumber = @PoNumber, 
+			ProjectNumber =  @ProjectNumber,
+			TaskNumber = @TaskNumber,
+			HoursLogged = @WorkedHours,
+			IsMissing = 0
+		Where 
+			EntryDate = @EntryDate
+	
+		Fetch Next From TiVoTimesheetCursor   
+		Into @ContractorNumber, @EntryDate, @PoNumber, @ProjectNumber, @TaskNumber, @WorkedHours
+	End
+
+	CLOSE TiVoTimesheetCursor;  
+	DEALLOCATE TiVoTimesheetCursor; 
+	
+	Select @TotalHours = Sum(HoursLogged) 
+	From @retTimesheetDetails 
+	Group By ContractorNumber
+	Insert into @retTimesheetDetails (ContractorNumber, HoursLogged, IsWeekend) Values(N'Total ' + @ContractorNumber, @TotalHours, 0)
+
+	Return;
+End
+
+Go
+
+If Object_Id(N'dbo.ufnMonthlyTimesheetDetails', N'TF') Is Not Null
+    Drop Function dbo.ufnMonthlyTimesheetDetails;
+Go
+
+Create Function dbo.ufnMonthlyTimesheetDetails(@HoursInMonth Int, @InvoiceMonth int, @InvoiceYear int)
+Returns @retTimesheetDetailsGlobal Table
+(
+    -- Columns returned by the function
+    Id int Identity Primary Key Not Null, 
+	ContractorNumber nVarChar(20) Null, 
+	ContractorNumberText nVarChar(20) Null, 
+	ContractorName nvarchar(255) null,
+    EntryDate datetime null,
+	PONumber float null,
+	ProjectNumber nvarchar(255) null,
+	TaskNumber nvarchar(255) null,
+	HoursLogged float null,
+	IsWeekend bit null,
+	IsMissing bit not null default(1)
+)
+AS 
+Begin
+	Declare @CurrentEmployeeId float
+	Declare @ContractorName nvarchar(255)
+	Declare @BeginingOfMonth datetime
+	Declare @EndOfMonth datetime
+
+	Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(@InvoiceYear as varchar(4)) + '-01-01' )
+	Set @EndOfMonth = EOMonth(@BeginingOfMonth)
+
+	DECLARE TiVoTimesheetCursorGlobal CURSOR FOR   
+	SELECT [Contractor Number], Max([Contractor Name])
+	From 
+		TiVo_Data With(NoLock)
+			Inner Join Ness_Employees With(NoLock) On Cast(Cast(TiVo_Data.[Contractor Number] as int) as varchar(20)) = Ness_Employees.EDCPersonalNumber
+			Inner Join Ness_Employee_Contract With(NoLock) On Ness_Employees.Id = Ness_Employee_Contract.EmployeeId
+	Where
+		Ness_Employee_Contract.StartDate <= @EndOfMonth
+		And (Ness_Employee_Contract.EndDate Is Null Or Ness_Employee_Contract.EndDate > @BeginingOfMonth)
+	Group By 
+		[Contractor Number]
+
+	Open TiVoTimesheetCursorGlobal
+	
+	Fetch Next From TiVoTimesheetCursorGlobal Into @CurrentEmployeeId, @ContractorName
+
+	While @@FETCH_STATUS = 0
+	Begin
+		Insert Into @retTimesheetDetailsGlobal (
+			ContractorNumber, 
+			ContractorNumberText,
+			ContractorName,
+			EntryDate ,
+			PONumber ,
+			ProjectNumber ,
+			TaskNumber ,
+			HoursLogged,
+			IsWeekend,
+			IsMissing)
+		Select 
+			Cast(Cast(@CurrentEmployeeId as int) as varchar(20)),
+			Case WHen ContractorNumber Is Null Then Cast(Cast(@CurrentEmployeeId as int) as varchar(20)) Else ContractorNumber End,
+			Case When ContractorNumber = 'Total ' + Cast(Cast(@CurrentEmployeeId as int) as varchar(20)) Then '' Else @ContractorName End,
+			EntryDate,
+			PONumber,
+			ProjectNumber,
+			TaskNumber,
+			HoursLogged,
+			IsWeekend,
+			IsMissing 
+		From 
+			dbo.ufnEmployeeTimesheetDetails(Cast(Cast(@CurrentEmployeeId as int) as varchar(20)), @HoursInMonth, @InvoiceMonth, @InvoiceYear)
+		Where 
+			IsWeekend = 0
+		
+		Fetch Next From TiVoTimesheetCursorGlobal Into @CurrentEmployeeId, @ContractorName
+	End
+
+	Close TiVoTimesheetCursorGlobal
+	Deallocate TiVoTimesheetCursorGlobal
+
+	return;
+End
+
+Go
+
 Print 'MUST IMPORT THE FILES THAT ARE NAMED LIKE THIS TREC-HC-16Jan18-salarii'
 Print 'After that operation is done execute the script uspImportEmployeeData_FromMonthlyNessHeadCountReport as many times as it is necessary.'
 Print 'Bellow you have an example that WILL NOT WORK unless data is imported'
@@ -1284,4 +1472,8 @@ Set @ResultValue = 0
 
 Execute dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport @SourceTable, 1, @ResultValue;
 
+Set @SourceTable = N'TiVo_Timesheet_February'
+Set @ResultValue = 0
+
+Execute dbo.uspImportDataFromTiVoTimesheet @SourceTable, @ResultValue;
 End

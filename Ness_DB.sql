@@ -466,6 +466,8 @@ Begin
 		End
 	End
 
+	Set @AddComma = Case When @VacationDays > 0  Or @JoinedOn > 0 Then 1 Else 0 End
+
 	If @AddComma = 1
 	Begin
 		Set @ResultData = @ResultData + Case When @LeavingOn != 100 Then ', last day on ' + Cast(@LeavingOn as varchar(10)) Else '' End

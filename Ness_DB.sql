@@ -518,7 +518,8 @@ Returns @retInvoiceRawData Table
 	LineAmount Decimal(28,15) Null,
 	Project VarChar(50) Null,
 	Task VarChar(50) Null,
-	Comments VarChar(255) Null
+	Comments VarChar(255) Null,
+	OrganizationName nvarchar(255) Null
 )
 AS 
 -- Returns the first name, last name, job title, and contact type for the specified contact.
@@ -552,6 +553,7 @@ Begin
 		,TiVo_Data.[Project Number] As Project
 		,TiVo_Data.[Task Number] As Task
 		,dbo.ufnGetEmployeeComments(Ness_Employees.Id, @InvoiceMonth, @HoursInMonth, @BillableHours)
+		,Max(TiVo_Data.[Organization Name]) As OrganizatioName
 	From 
 		Ness_Employees
 			Left Join Ness_Employee_Contract on Ness_Employee_Contract.EmployeeId = Ness_Employees.Id
@@ -588,39 +590,75 @@ Returns @retMissingInvoiceData Table
     HourlyRate Decimal(28,15) Null,
 	HoursMissing Int Null,
 	HoursWorked Int Null,
-	LineAmount Decimal(28,15) Null
+	LineAmount Decimal(28,15) Null,
+	OrganizationName nvarchar(255) Null
 )
 AS 
 Begin
 	Declare @BeginingOfMonth datetime
 	Declare @EndOfMonth datetime
+	Declare @LastName nvarchar(50)
+	Declare @FirstName nvarchar(50)
+	Declare @EDCPersonalNumber nvarchar(20)
+	Declare @HourlyRate decimal (28,15)
+	Declare @WorkedHours int
+
 
 	Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(@InvoiceYear as varchar(4)) + '-01-01' )
 	Set @EndOfMonth = EOMonth(@BeginingOfMonth)
-	
-	Insert Into @retMissingInvoiceData
-	Select 
-		Max(Ness.dbo.Ness_Employees.LastName) as LastName
-		,Max(Ness.dbo.Ness_Employees.FirstName) as FirstName
-		,Max(Ness.dbo.Ness_Employees.EDCPersonalNumber)
-		,(Case When Max(Ness_Employee_Contract.Rate) Is Null Then 0 Else Max(Ness_Employee_Contract.Rate) End / @HoursInMonth) As [Hourly Rate]
-		,dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth, @InvoiceYear) - (Case When Sum(TiVo_Data.[Worked Hours]) Is Null Then 0 Else Sum(TiVo_Data.[Worked Hours]) End) As [Hours Missing]
-		,Sum(TiVo_Data.[Worked Hours]) As [Hours Worked]
-		,Case When Max(Ness_Employee_Contract.Rate) Is Null Then 0 Else (Max(Ness_Employee_Contract.Rate) * (dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth, @InvoiceYear) - Sum(TiVo_Data.[Worked Hours]))) / @HoursInMonth End As LineAmount
-	From 
-		Ness_Employees
-			Inner Join Ness_Employee_Contract on Ness_Employee_Contract.EmployeeId = Ness_Employees.Id
-			Left Join TiVo_Data On TiVo_Data.[Contractor Number] = Ness_Employees.EDCPersonalNumber
-	Where
-		(Ness_Employee_Contract.EndDate > @BeginingOfMonth Or Ness_Employee_Contract.EndDate Is Null)
-		And ([Time Entry Date] >= @BeginingOfMonth And [Time Entry Date] <= @EndOfMonth)
-		Or TiVo_Data.[Contractor Number] Is Null
-	Group By
-		Ness_Employees.Id
-		,Ness.dbo.TiVo_Data.[Contractor Number]
-	Order By
-		Max(LastName)
 
+	-- Insert into the table the data "in raw mode" -> one entry for every employee with a valid contract during that month + all hours
+	Insert Into @retMissingInvoiceData (
+		LastName, 
+		FirstName, 
+		ContractorNumber, 
+		HourlyRate, 
+		HoursMissing)
+	SELECT 
+		Ness_Employees.LastName,
+		Ness_Employees.FirstName,
+		Ness_Employees.EDCPersonalNumber,
+		(Case When Ness_Employee_Contract.Rate Is Null Then 0 Else Ness_Employee_Contract.Rate End) / @HoursInMonth As HourlyRate,
+		dbo.ufnGetEmployeeHoursInMonth(Ness_Employees.Id, @InvoiceMonth, @InvoiceYear)
+	From 
+		Ness_Employees 
+			Inner Join Ness_Employee_Contract On Ness_Employees.ID = Ness_Employee_Contract.EmployeeId
+	Where 
+		Ness_Employee_Contract.StartDate < @EndOfMonth
+		And (Ness_Employee_Contract.EndDate > @BeginingOfMonth Or Ness_Employee_Contract.EndDate Is Null)
+
+	-- Fetch data from the TiVo timesheet and update the data in the table
+	Declare TiVoDataCursor Cursor For
+	Select
+		Cast(Cast([Contractor Number] as int) as varchar(20))
+		,(Case When Sum(TiVo_Data.[Worked Hours]) Is Null Then 0 Else Sum(TiVo_Data.[Worked Hours]) End) As WorkedHours
+	From 
+		TiVo_Data With(NoLock)
+	Where 
+		TiVo_Data.[Time Entry Date] <= @EndOfMonth
+		And TiVo_Data.[Time Entry Date] >= @BeginingOfMonth
+	Group By
+		[Contractor Number]
+
+	Open TiVoDataCursor
+	
+	Fetch Next From TiVoDataCursor   
+	Into @EDCPersonalNumber, @WorkedHours
+
+	While @@FETCH_STATUS = 0
+	Begin
+		If @WorkedHours != 0
+		Begin
+			Update @retMissingInvoiceData Set HoursMissing = HoursMissing - @WorkedHours Where ContractorNumber = @EDCPersonalNumber
+		End
+
+		Fetch Next From TiVoDataCursor   
+		Into @EDCPersonalNumber, @WorkedHours
+	End
+
+	Close TiVoDataCursor
+	Deallocate TiVoDataCursor
+	
 	Return;
 End
 
@@ -1322,9 +1360,22 @@ Begin
 
 	-- Update the timesheet
 	DECLARE TiVoTimesheetCursor CURSOR FOR   
-	SELECT Cast(Cast([Contractor Number] as int) as nvarchar(20)), [Time Entry Date], [Po Number], [Project Number], [Task Number], [Worked Hours]
-	From TiVo_Data
-	Where Cast(Cast([Contractor Number] as int) as nvarchar(20)) = @EmployeeTiVoID
+	SELECT 
+		Cast(Cast([Contractor Number] as int) as nvarchar(20)), 
+		--Max([Contractor Name]), 
+		[Time Entry Date], 
+		Max([Po Number]), 
+		[Project Number], 
+		[Task Number], 
+		Sum([Worked Hours])
+	From 
+		TiVo_Data
+	Where 
+		Cast(Cast([Contractor Number] as int) as nvarchar(20)) = @EmployeeTiVoID
+		And [Time Entry Date] >= @BeginingOfMonth
+		And [Time Entry Date] <= @EndOfMonth
+	Group By
+		[Time Entry Date], [Contractor Number], [Project Number], [Task Number]
 
 	Open TiVoTimesheetCursor
 	

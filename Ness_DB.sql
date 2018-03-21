@@ -647,9 +647,28 @@ Begin
 
 	While @@FETCH_STATUS = 0
 	Begin
+		Declare @ContractorRate decimal(28,15)
+
+		Select
+			@ContractorRate = Ness_Employee_Contract.Rate
+		From
+			Ness_Employees
+				Inner Join Ness_Employee_Contract On Ness_Employee_Contract.EmployeeId = Ness_Employees.Id
+		Where
+			Ness_Employees.EDCPersonalNumber = @EDCPersonalNumber
+
 		If @WorkedHours != 0
 		Begin
-			Update @retMissingInvoiceData Set HoursMissing = HoursMissing - @WorkedHours Where ContractorNumber = @EDCPersonalNumber
+			Update @retMissingInvoiceData 
+			Set 
+				HoursMissing = HoursMissing - @WorkedHours,
+				LineAmount =  Case When HourlyRate * (HoursMissing - @WorkedHours) > @ContractorRate Then @ContractorRate Else HourlyRate * (HoursMissing - @WorkedHours) End
+			Where 
+				ContractorNumber = @EDCPersonalNumber
+		End
+		Else
+		Begin
+			Update @retMissingInvoiceData Set LineAmount = @ContractorRate Where ContractorNumber = @EDCPersonalNumber
 		End
 
 		Fetch Next From TiVoDataCursor   

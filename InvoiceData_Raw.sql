@@ -14,72 +14,52 @@ Declare @HoursInMonth int
 
 Set @BillableHours = 160
 Set @HoursInMonth = 160
-Set @TimesheetHours = 184
+Set @TimesheetHours = 160
 Set @InvoiceMonth = 2
 Set @InvoiceYear = 2018
 Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(@InvoiceYear as varchar(4)) + '-01-01' )
 Set @EndOfMonth = EOMonth(@BeginingOfMonth)
 
 
-
+-- Select * From TiVo_Data Where [Contractor Number] = '4035' Order By [Time Entry Date]
 -- First tab (invoice data)
-/*
+
 Select 
-	EmployeeId, 
-	ShortText, 
-	OldPONumber, 
-	LastName, 
-	FirstName, 
-	ContractorNumber, 
-	HourlyRate, 
-	HoursLogged, 
-	LineAmount, 
-	Project, 
-	Task, 
-	Comments
-from dbo.ufnGetInvoiceRawData(@TimesheetHours, @BillableHours, @InvoiceMonth, @InvoiceYear) 
+	Ness_Employees.NessId,
+	Smen.EmployeeId, 
+	Smen.ShortText, 
+	Smen.PoNumber, 
+	Smen.LastName, 
+	Smen.FirstName, 
+	Smen.ContractorNumber, 
+	Smen.HourlyRate, 
+	Smen.HoursLogged, 
+	Smen.LineAmount, 
+	Smen.Project, 
+	Smen.Task, 
+	Smen.Comments
+from 
+	dbo.ufnGetInvoiceRawData(@TimesheetHours, @BillableHours, @InvoiceMonth, @InvoiceYear)  As Smen
+		Inner Join Ness_Employees On Ness_Employees.EDCPersonalNumber = ContractorNumber
 Where 
 	Not (Project = 'SAP 1082' And Task = '003')
 	And Not (Project = 'SAP 1173' And Task = '003')
 Order By 
 	LastName
-*/
 
-Select
-	dbo.ufnGetEmployeeHoursInMonth(77, 2, 2018) - (Case When Sum(TiVo_Data.[Worked Hours]) Is Null Then 0 Else Sum(TiVo_Data.[Worked Hours]) End) As [Hours Missing],
-	*
-From 
-	Ness_Employees
-		Inner Join Ness_Employee_Contract on Ness_Employee_Contract.EmployeeId = Ness_Employees.Id
-		Left Join TiVo_Data On Cast(Cast(TiVo_Data.[Contractor Number] as int) as varchar(20)) = Ness_Employees.EDCPersonalNumber
-Where
-	Ness_Employees.LastName = 'Anghel'
 
 -- Second tab - missing hours
 /*
 Select 
 	LastName, FirstName, ContractorNumber, HourlyRate, HoursMissing, 
-	HoursWorked, 
+	--HoursWorked, 
 	Case When LineAmount Is Null Then (SELECT Min(a) FROM (VALUES (HoursMissing), (@BillableHours)) as myTable(a)) * HourlyRate Else LineAmount End
 from 
 	dbo.ufnGetMissingInvoiceInfo(@BillableHours, @InvoiceMonth, @InvoiceYear) 
 Where 
 	HoursMissing != 0 or 
 	HoursMissing is null
-*/
-
-/*
-SELECT 
-	Cast(Cast([Contractor Number] as int) as nvarchar(20)), Max([Contractor Name]), [Time Entry Date], Max([Po Number]), [Project Number], [Task Number], Sum([Worked Hours])
-From 
-	TiVo_Data
-Where
-	[Time Entry Date] >= @BeginingOfMonth
-		And [Time Entry Date] <= @EndOfMonth
-Group By
-	[Time Entry Date], [Contractor Number], [Project Number], [Task Number]
-Order By
-	Max([Contractor Name]), Max([Time Entry Date])
+Order By LastName
 */
 
 -- Third tab - TiVo timesheet checked
@@ -92,16 +72,16 @@ Select
 	ProjectNumber ,
 	TaskNumber ,
 	HoursLogged,
-	IsMissing
+	IsMissingOrIncomplete
 From 
 	dbo.ufnMonthlyTimesheetDetails(@BillableHours, @InvoiceMonth, @InvoiceYear)
 		Left Join Ness_Employees With(NoLock) On Ness_Employees.EDCPersonalNumber = ContractorNumber
 Where IsWeekend = 0
 Order By 
 	Ness_Employees.LastName
-*/	
 
--- Third tab - TiVo timesheet checked - only missing hours
+*/
+-- Third tab - TiVo timesheet checked - only missing hours - Nu merge cum trebuie
 /*
 Select 
 	ContractorNumber, 
@@ -146,7 +126,7 @@ Order By
 	Max(OrganizationName)
 	,Max(Ness_Employees.LastName)
 
-*/	
+*/
 
 -- Contracts that expire during the @InvoiceMonth
 /*
@@ -158,11 +138,11 @@ Where
 	Ness_Employee_Contract.EndDate <= @EndOfMonth And Ness_Employee_Contract.EndDate >= @BeginingOfMonth
 */
 
-
 -- Contracts that are active during @InvoiceMonth
 
 /*
-Select * 
+Select 
+	LastName, FirstName, EDCPersonalNumber, Rate
 From
 	Ness_Employees
 		inner Join Ness_Employee_Contract on Ness_Employees.Id = Ness_Employee_Contract.EmployeeId
@@ -171,3 +151,4 @@ Where
 Order By
 	LastName
 	*/
+

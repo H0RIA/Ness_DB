@@ -548,7 +548,7 @@ Begin
 		,(Case 
 			When Max(Ness_Employee_Contract.Rate) Is Null 
 			Then 0 
-			Else Max(Ness_Employee_Contract.Rate) End / dbo.ufnGetEmployeeBillableLoggedHoursInMonth(Ness_Employees.Id, @InvoiceMonth)) As [Hourly Rate]
+			Else Max(Ness_Employee_Contract.Rate) End / dbo.ufnGetEmployeeBillableLoggedHoursInMonth(Ness_Employees.Id, @InvoiceMonth, @InvoiceYear)) As [Hourly Rate]
 		,Sum(TiVo_Data.[Worked Hours]) As [Logged Hours]
 		,Case 
 			When Max(Ness_Employee_Contract.Rate) Is Null 

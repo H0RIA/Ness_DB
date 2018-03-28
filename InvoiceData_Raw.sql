@@ -15,11 +15,10 @@ Declare @HoursInMonth int
 Set @BillableHours = 160
 Set @HoursInMonth = 160
 Set @TimesheetHours = 160
-Set @InvoiceMonth = 2
+Set @InvoiceMonth = 3
 Set @InvoiceYear = 2018
 Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(@InvoiceYear as varchar(4)) + '-01-01' )
 Set @EndOfMonth = EOMonth(@BeginingOfMonth)
-
 
 -- Select * From TiVo_Data Where [Contractor Number] = '4035' Order By [Time Entry Date]
 -- First tab (invoice data)
@@ -45,6 +44,7 @@ Where
 	Not (Project = 'SAP 1082' And Task = '003')
 	And Not (Project = 'SAP 1173' And Task = '003')
 Order By 
+	Smen.PoNumber, 
 	LastName
 
 

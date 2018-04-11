@@ -897,7 +897,7 @@ Begin
 	Declare @TaskNumber nvarchar(255)
 	Declare @TaskName nvarchar(255)
 	Declare @ApproverName nvarchar(255)
-	Declare @ApproverDate nvarchar(255)
+	Declare @ApprovedDate nvarchar(255)
 	Declare @ContractorStartDate nvarchar(255)
 	Declare @ContractorEndDate nvarchar(255)
 	Declare @ExpenditureType nvarchar(255)
@@ -954,7 +954,7 @@ Begin
 		@TaskNumber,
 		@TaskName,
 		@ApproverName,
-		@ApproverDate,
+		@ApprovedDate,
 		@ContractorStartDate,
 		@ContractorEndDate,
 		@ExpenditureType,
@@ -972,6 +972,10 @@ Begin
 			And [Project Number] = @ProjectNumber
 			And [Task Number] = @TaskNumber
 			And [Worked Hours] = @WorkedHours
+			And [UOM] = @UOM
+			And [Organization Name] = @OrgName
+			And [Expenditure Type] = @ExpenditureType
+			And [Approved Date] = @ApprovedDate
 
 		If @RecordCount > 1
 		Begin
@@ -1023,7 +1027,7 @@ Begin
 				@TaskNumber,
 				@TaskName,
 				@ApproverName,
-				@ApproverDate,
+				@ApprovedDate,
 				@ContractorStartDate,
 				@ContractorEndDate,
 				@ExpenditureType,
@@ -1055,7 +1059,7 @@ Begin
 			@TaskNumber,
 			@TaskName,
 			@ApproverName,
-			@ApproverDate,
+			@ApprovedDate,
 			@ContractorStartDate,
 			@ContractorEndDate,
 			@ExpenditureType,
@@ -1310,15 +1314,15 @@ Go
 Declare @SourceTable nvarchar(50)
 Declare @ResultValue int
 
-Set @SourceTable = N'TiVo_Stuff'
-Set @ResultValue = 0
+--Set @SourceTable = N'TiVo_Stuff'
+--Set @ResultValue = 0
 
-Execute dbo.uspImportDataFromTiVoRaw @SourceTable, @ResultValue;
+--Execute dbo.uspImportDataFromTiVoRaw @SourceTable, @ResultValue;
 
-Set @SourceTable = N'TiVo_Data_Raw_February'
-Set @ResultValue = 0
+--Set @SourceTable = N'TiVo_Data_Raw_February'
+--Set @ResultValue = 0
 
-Execute dbo.uspImportDataFromTiVoRaw @SourceTable, @ResultValue;
+--Execute dbo.uspImportDataFromTiVoRaw @SourceTable, @ResultValue;
 
 Set @SourceTable = N'TiVo_Data_Raw_March'
 Set @ResultValue = 0
@@ -1557,7 +1561,7 @@ Begin
 	Group By ContractorNumber
 	
 	-- Insert the total hours
-	Insert into @retTimesheetDetails (ContractorNumber, HoursLogged, IsWeekend, EntryDate, IsMissingOrIncomplete) Values(N'Total ' + @ContractorNumber, @TotalHours, 0, @EndOfMonth, 0)
+	Insert into @retTimesheetDetails (ContractorNumber, HoursLogged, IsWeekend, EntryDate, IsMissingOrIncomplete) Values(N'Total ' + @EmployeeTiVoID, @TotalHours, 0, @EndOfMonth, 0)
 
 	Return;
 End
@@ -1626,7 +1630,8 @@ Begin
 		Select 
 			Cast(Cast(@CurrentEmployeeId as int) as varchar(20)),
 			Case When ContractorNumber Is Null Then Cast(Cast(@CurrentEmployeeId as int) as varchar(20)) Else ContractorNumber End,
-			Case When ContractorNumber = 'Total ' + Cast(Cast(@CurrentEmployeeId as int) as varchar(20)) Then '' Else @ContractorName End,
+			--Case When ContractorNumber Is Null Then 'Total ' + Cast(Cast(@CurrentEmployeeId as int) as varchar(20)) Else ContractorNumber End,
+			@ContractorName,
 			EntryDate,
 			PONumber,
 			ProjectNumber,
@@ -1659,7 +1664,7 @@ Print 'Bellow you have an example that WILL NOT WORK unless data is imported'
 Begin
 Declare @SourceTable nvarchar(50)
 Declare @ResultValue int
-
+/*
 Set @SourceTable = N'TREC_HC_Feb18'
 Set @ResultValue = 0
 
@@ -1681,6 +1686,12 @@ Set @ResultValue = 0
 Execute dbo.uspImportEmployeeData_FromMonthlyNessHeadCountReport @SourceTable, 1, @ResultValue;
 
 Set @SourceTable = N'TiVo_Timesheet_February'
+Set @ResultValue = 0
+
+Execute dbo.uspImportDataFromTiVoTimesheet @SourceTable, @ResultValue;
+End
+*/
+Set @SourceTable = N'TiVo_Data_Raw_March'
 Set @ResultValue = 0
 
 Execute dbo.uspImportDataFromTiVoTimesheet @SourceTable, @ResultValue;

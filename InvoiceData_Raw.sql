@@ -15,7 +15,7 @@ Declare @HoursInMonth int
 Set @BillableHours = 160
 Set @HoursInMonth = 160
 Set @TimesheetHours = 160
-Set @InvoiceMonth = 3
+Set @InvoiceMonth = 1
 Set @InvoiceYear = 2018
 Set @BeginingOfMonth = DateAdd( month , @InvoiceMonth - 1 , Cast(@InvoiceYear as varchar(4)) + '-01-01' )
 Set @EndOfMonth = EOMonth(@BeginingOfMonth)

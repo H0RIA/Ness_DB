@@ -125,6 +125,29 @@ Insert Into Ness_EDC_Teams (AreaId, TeamName, TeamDescription)
 Insert Into Ness_EDC_Teams (AreaId, TeamName, TeamDescription) 
 	Values ((Select Id From Ness_EDC_Areas Where AreaName = N'TVE'), N'R2D2', N'Android Development')
 
+If Exists (Select * From sys.tables Where name = 'TiVo_Cost_Centers')
+Begin
+	Drop Table TiVo_Cost_Centers
+	Print 'Dropped table TiVo_Cost_Centers!'
+End
+	
+Print 'Created table TiVo_Cost_Centers!'
+Create Table TiVo_Cost_Centers(
+	Id int Identity Primary Key Not Null, 
+	CCName NVarChar(50) Not Null,
+	CCDescription NVarChar(255) Not Null,
+	TiVoCCId integer Not Null,
+	Index IDX_TIVO_COST_CENERS_ID(Id)
+)
+
+Insert Into TiVo_Cost_Centers (CCName, CCDescription, TiVoCCId) Values('PSO MSO', '', 5903)
+Insert Into TiVo_Cost_Centers (CCName, CCDescription, TiVoCCId) Values('PSO FE', '', 5906)
+Insert Into TiVo_Cost_Centers (CCName, CCDescription, TiVoCCId) Values('Client development', 'Development for all client platforms: STB, Apps, Portal, Mobile', 6986)
+Insert Into TiVo_Cost_Centers (CCName, CCDescription, TiVoCCId) Values('Service Development', 'Development for the services team', 6993)
+Insert Into TiVo_Cost_Centers (CCName, CCDescription, TiVoCCId) Values('QE', '', 6994)
+Insert Into TiVo_Cost_Centers (CCName, CCDescription, TiVoCCId) Values('INVALID', '', 0)
+
+
 Print 'Created table Ness_Levels!'
 Create Table Ness_Levels(
 	Id int Identity Primary Key Not Null,
@@ -150,9 +173,11 @@ Create Table Ness_Employees(
 	EDCId int Not Null,
 	IsTaxExempt bit Not Null Default(0),
 	EDCPersonalNumber NVarChar(20) Null,
+	EDCCostCenter integer Not Null,
 	Constraint FK_EmployeeId_EDC Foreign Key (EDCId) References Ness_EDC(Id),
+	Constraint FK_EmployeeId_CostCenter Foreign Key (EDCCostCenter) References TiVo_Cost_Centers(Id),
 	Index IDX_NESS_EMPLOYEES_ID(Id)
-)
+) 
 
 Print 'Populate table Ness_Employees...'
 Insert Into Ness_Employees (FirstName, LastName, NessId, EDCId, IsTaxExempt, EDCPersonalNumber) 
@@ -241,6 +266,24 @@ Create Table Ness_Contract_Salaries(
 )
 
 Delete From Ness_Employee_Contract
+
+/*
+If Exists (Select * From sys.tables Where name = 'TiVo_Employee_CostCenter')
+Begin
+	Drop Table TiVo_Employee_CostCenter
+	Print 'Dropped table TiVo_Employee_CostCenter!'
+End
+
+Print 'Created table TiVo_Employee_CostCenter!'
+Create Table TiVo_Employee_CostCenter(
+	Id int Identity Primary Key Not Null, 
+	EmployeeId integer Not Null,
+	CostCenterId integer Not Null,
+	Constraint FK_TiVo_Employee_CostCenter_Employee Foreign Key (EmployeeId) References Ness_Employees(Id),
+	Constraint FK_TiVo_Employee_CostCenter_CostCenter Foreign Key (CostCenterId) References TiVo_Cost_Centers(Id),
+	Index IDX_TIVO_COST_CENERS_ID(Id)
+)
+*/
 
 IF OBJECT_ID(N'dbo.ufnGetEmployeeHoursInMonth', N'FN') Is Not Null
     Drop Function dbo.ufnGetEmployeeHoursInMonth;
@@ -371,6 +414,56 @@ Begin
 End
 
 Go
+
+If Object_Id(N'dbo.ufnGetEmployeeVacationDays', N'FN') Is Not Null
+    Drop Function dbo.ufnGetEmployeeVacationDays;
+Go
+
+Create Function dbo.ufnGetEmployeeVacationDays(@paramEmployeeId int, @Month int, @HoursInMonth Int, @BillableHours int)
+Returns int
+As
+Begin
+	Declare @VacationDays int
+	Declare @JoinedOn int	-- what day of month (if zero => no additional comment)
+	Declare @LeavingOn int	-- what day of month (if 100 => no additional comment)
+	Declare @BeginingOfMonth datetime
+	Declare @EndOfMonth datetime
+	Declare @HolidayHours int
+
+	Set @BeginingOfMonth = DateAdd( month , @Month - 1 , Cast(Year(GetDate()) as varchar(4)) + '-01-01' )
+	Set @EndOfMonth = EOMonth(@BeginingOfMonth)
+	Set @VacationDays = 0
+	Set @HolidayHours = @HoursInMonth - @BillableHours
+
+	Select
+		@VacationDays = (LoggedHours - @HolidayHours) / 8
+	From 
+		(Select 
+			Ness_Employees.Id As EmployeeId
+			,Sum(TiVo_Data.[Worked Hours]) As LoggedHours
+			,TiVo_Data.[Project Number] As Project
+			,TiVo_Data.[Task Number] As Task
+		From 
+			Ness_Employees
+				Left Join Ness_Employee_Contract on Ness_Employee_Contract.EmployeeId = Ness_Employees.Id
+				Left Join TiVo_Data On TiVo_Data.[Contractor Number] = Ness_Employees.EDCPersonalNumber
+		Where
+			(Ness_Employee_Contract.EndDate >= @BeginingOfMonth Or Ness_Employee_Contract.EndDate Is Null)
+			And ([Time Entry Date] >= @BeginingOfMonth And [Time Entry Date] <= @EndOfMonth)
+		Group By
+			Ness_Employees.Id
+			,Ness.dbo.TiVo_Data.[Contractor Number]
+			,TiVo_Data.[Project Number]
+			,TiVo_Data.[Task Number]) As RawData
+	Where
+		RawData.EmployeeId = @paramEmployeeId
+		And ((RawData.Project = 'SAP 1082' And RawData.Task = '003') Or (RawData.Project = 'SAP 1173' And RawData.Task = '003'))
+
+	Return @VacationDays
+
+End
+
+GO
 
 If Object_Id(N'dbo.ufnGetEmployeeComments', N'FN') Is Not Null
     Drop Function dbo.ufnGetEmployeeComments;
@@ -1562,6 +1655,9 @@ Begin
 	
 	-- Insert the total hours
 	Insert into @retTimesheetDetails (ContractorNumber, HoursLogged, IsWeekend, EntryDate, IsMissingOrIncomplete) Values(N'Total ' + @EmployeeTiVoID, @TotalHours, 0, @EndOfMonth, 0)
+
+	-- Set the last used PoNumber for the entries that do not have a PoNumber
+	Update @retTimesheetDetails Set PONumber = @PoNumber Where PONumber Is Null
 
 	Return;
 End
